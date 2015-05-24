@@ -1,0 +1,81 @@
+---
+title: "Predict the Manner of Exercise"
+author: "Freemanc"
+date: "May 24, 2015"
+output: html_document
+---
+
+## Summary
+In this assignment, we try to use data collected from accelerometers on different parts of body to predict the manner of dumbell lifting exercise, i.e., *how well* the exercise is performed. The manners are classified as five "classes", A-E. Therefore, the prediction goal is to predict "classe" from all other variables in the training data.
+
+## Load the data
+We first download and read the training and testing data.
+```{r}
+library(caret)
+library(randomForest)
+library(gbm)
+setwd("~/Documents/coursera/Practical_machine_learning/project")
+```
+```{r}
+if (!file.exists("./data/pml-training.csv")) {
+        fileURL1 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+        download.file(fileURL1, destfile="./data/pml-training.csv", method="curl")
+}
+if (!file.exists("./data/pml-testing.csv")) {
+        fileURL2 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+        download.file(fileURL2, destfile="./data/pml-testing.csv", method="curl")
+}
+```
+```{r}
+training <- read.csv("./data/pml-training.csv")
+testing <- read.csv("./data/pml-testing.csv")
+```
+
+## Preprocessing
+In this section, we will do some preprocessing work to make it easier for prediction algorithms. Due to the high dimension, we first remove variables that are near zero variance.
+```{r}
+dim(training)
+nzv <- nearZeroVar(training)
+training.sub <- training[ , -nzv]
+```
+Then, we deal with NA's. It can be calculated that all columns with NA's are *almost* all of NA's. It is not helpful to keep those variables. Furthermore, First five variables are not related to prediction. So, we remove them as well.
+```{r}
+## calculate the # of NA's for each variables
+na.num <- sapply(training.sub, function(x) sum(is.na(x)))
+min(na.num[na.num!=0]) # show the high sparsity of the columns containing NA's
+training.sub <- training.sub[na.num==0] # remove those columns
+head(names(training.sub)) # show first a few variable names
+training.sub <- training.sub[ ,-(1:5)] # remove variables that are irrelevant with prediction
+```
+In final part of this section, we implement principal component analysis as the core preprocess before we train the data with prediction algorithm in subsequent sections.
+```{r}
+preProc <- preProcess(training.sub[,-54],method="pca")
+trainPC <- predict(preProc,training.sub[,-54])
+```
+
+## Cross validation
+In our training, we will use cross validation to estimate the out of sample error. Here, we use the common cross validation method, K-fold. The number of K is chosen as the default value K=10 in `caret` package. In next two sections, we will use random forest and boosting prediction algorithm to train our data. These two are among the most commonly used and accurate machine learning algorithms for complex prediction.
+
+## Train with random forest
+```{r cache=TRUE, results='hide'}
+fit.rf <- train(training.sub$classe~., data=trainPC, trControl=trainControl(method="cv"))
+```
+```{r}
+print(fit.rf$finalModel)
+```
+
+## Train with boosting (gbm)
+```{r cache=TRUE, results='hide'}
+suppressWarnings(
+        fit.b <- train(training.sub$classe~., method="gbm", data=trainPC, 
+                      verbose="FALSE", trControl=trainControl(method="cv"))
+)
+```
+```{r}
+print(fit.b)
+```
+
+## Model comparison and conclusion
+Based on the results above, we can conclude that the random forest model is more accurate. **The estimated out of sample error rate is 1.44% by the estimation from 10-fold cross validation.**
+
+We will apply the ramdom forest model to the 20 test cases, which will be submitted separately to the programming part of this assignment.
